@@ -7,26 +7,31 @@ from pprint import pprint
 
 
 def uniprot2EMBL(uniprotID):
-
     url = f"https://rest.uniprot.org/uniprotkb/{uniprotID}?format=json&fields=xref_embl"
 
     response = requests.get(url)
     data = json.loads(response.text)
-    embl = data["uniProtKBCrossReferences"][0]["properties"]
+    try:
+        embl = data["uniProtKBCrossReferences"][0]["properties"]
+    except Exception as e:
+        print(e)
+        embl = ""
+
     for i in embl:
         if i["key"] == "ProteinId":
             embl = i['value']
+
     return embl
-
-
-
 
 def get_genome_coordinates_refseq(acc):
 
     response = requests.get('https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=protein&id='+acc+'&rettype=ipg')
     if response.ok:
         parsed = xmltodict.parse(response.text)
-        proteins = parsed["IPGReportSet"]["IPGReport"]
+        try:
+            proteins = parsed["IPGReportSet"]["IPGReport"]
+        except Exception as e:
+            raise Exception('IPGReportSet error refseq')
 
 
         if "ProteinList" in proteins.keys():
@@ -62,7 +67,10 @@ def get_genome_coordinates(homolog_dict_item):
         response = requests.get('https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=protein&id='+embl+'&rettype=ipg')
         if response.ok:
             parsed = xmltodict.parse(response.text)
-            proteins = parsed["IPGReportSet"]["IPGReport"]
+            try:
+                proteins = parsed["IPGReportSet"]["IPGReport"]
+            except Exception as e:
+                raise Exception('IPGReportSet error get_genome_coordinates')
 
 
             if "ProteinList" in proteins.keys():
@@ -99,29 +107,26 @@ def get_genome_coordinates_batch(homolog_dict):
     new_homolog_dict = []
     embl_acc_list = []
     for i in homolog_dict:
-        try:
-            embl = uniprot2EMBL(i["Uniprot Id"])
-            embl_acc_list.append(embl)
-            new_homolog_dict.append(i)
-        except:
-            pass
+        embl = uniprot2EMBL(i["Uniprot Id"])
+        embl_acc_list.append(embl)
+        new_homolog_dict.append(i)
     homolog_dict = new_homolog_dict
 
-        # This was returning a 443 HTTPS error code from Uniprot when I have a slow internet connection.
-    #embl_acc_list = [uniprot2EMBL(i["Uniprot Id"]) for i in homolog_dict]
-    # embl_acc_list = []
-    # for i in homolog_dict:
-    #     embl_acc_list.append(uniprot2EMBL(i["Uniprot Id"]))
-    #     time.sleep(1)
-
     embl_string = "".join(i+"," for i in embl_acc_list)[:-1]
-    
+
+    print(f'embl_string: {embl_string}')
 
     response = requests.get('https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=protein&id='+embl_string+'&rettype=ipg')
     if response.ok:
         parsed = xmltodict.parse(response.text)
-        proteins = parsed["IPGReportSet"]["IPGReport"]
+        try:
+            proteins = parsed["IPGReportSet"]["IPGReport"]
+        except Exception as e:
+            raise Exception('IPGReportSet error get_genome_coordinates_batch')
 
+        print(proteins)
+        print(homolog_dict)
+            
         if len(proteins) == len(homolog_dict):
 
             for i in range(0,len(proteins)):
@@ -149,10 +154,3 @@ def get_genome_coordinates_batch(homolog_dict):
             print("number of homologs doesn't match number of genome coordinates returned")
     else:
         print('WARNING: get_genome_coordinates eFetch request failed')
-
-
-
-
-if __name__ == "__main__":
-
-    uniprot_acc_list = ["C5MRT6", "X5L9N8", "A0A5C7YB49", "A0A5A7Z5M7", "A0A379BGE6"]
