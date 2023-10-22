@@ -11,16 +11,10 @@ def uniprot2EMBL(uniprotID):
 
     response = requests.get(url)
     data = json.loads(response.text)
-    try:
-        embl = data["uniProtKBCrossReferences"][0]["properties"]
-    except Exception as e:
-        print(e)
-        embl = ""
-
+    embl = data["uniProtKBCrossReferences"][0]["properties"]
     for i in embl:
         if i["key"] == "ProteinId":
             embl = i['value']
-
     return embl
 
 def get_genome_coordinates_refseq(acc):
@@ -54,10 +48,6 @@ def get_genome_coordinates_refseq(acc):
             print("ProteinList is not in IPGReport")
     else:
         print('WARNING: get_genome_coordinates eFetch request failed')
-
-
-
-
 
 def get_genome_coordinates(homolog_dict_item):
 
@@ -96,9 +86,6 @@ def get_genome_coordinates(homolog_dict_item):
     except:
         return homolog_dict_item
 
-
-
-
 def get_genome_coordinates_batch(homolog_dict):
 
     # sometimes there is "uniProtKBCrossReferences" key for a protein
@@ -107,9 +94,13 @@ def get_genome_coordinates_batch(homolog_dict):
     new_homolog_dict = []
     embl_acc_list = []
     for i in homolog_dict:
-        embl = uniprot2EMBL(i["Uniprot Id"])
-        embl_acc_list.append(embl)
-        new_homolog_dict.append(i)
+        try:
+            embl = uniprot2EMBL(i["Uniprot Id"])
+            embl_acc_list.append(embl)
+            new_homolog_dict.append(i)
+        except:
+            print(f'embl failure on {i["Uniprot Id"]} for {i}')
+            pass
     homolog_dict = new_homolog_dict
 
     embl_string = "".join(i+"," for i in embl_acc_list)[:-1]
