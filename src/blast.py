@@ -40,12 +40,17 @@ def uniprotID2sequence(ID: str):
 
 def blast(acc, input_method, params, max_seqs):
 
+    print(f'Blast params: {params}')
+
     if input_method == "RefSeq":
         seq = accID2sequence(acc)
     elif input_method == "Uniprot":
         seq = uniprotID2sequence(acc)
     else:
         seq = acc
+
+    if seq is None:
+        raise Exception('Bad efetch')
 
     flags = 'sseqid pident qcovhsp'
         # Must set this memory limit for running on a 1GB EC2 instance
@@ -54,13 +59,24 @@ def blast(acc, input_method, params, max_seqs):
     query = NamedTemporaryFile()
     tmp = NamedTemporaryFile()
     log = NamedTemporaryFile()
-    SeqIO.write(SeqRecord(Seq(seq), id="temp"), query.name, "fasta")
-
-    # Select database to blast
-    diamond_db = "./databases/bHTH_RefSeq.dmnd"
+    try:
+        SeqIO.write(SeqRecord(Seq(seq), id="temp"), query.name, "fasta")
+    except Exception as e:
+        print('SeqIO failure')
+        raise Exception(e)
     
-    subprocess.call(f'./databases/diamond blastp -d {diamond_db} -q {query.name} -o {tmp.name} --outfmt 6 {flags} -b {memory_limit}'
-                    f' --id {params["ident_cutoff"]} --query-cover {params["cov_cutoff"]} --max-target-seqs {max_seqs} >> {log.name} 2>&1' , shell=True)
+    print(query.name)
+
+    try:
+        # Select database to blast
+        diamond_db = "./databases/bHTH_RefSeq.dmnd"
+        
+        subprocess.call(f'diamond blastp -d {diamond_db} -q {query.name} -o {tmp.name} --outfmt 6 {flags} -b {memory_limit}'
+                        f' --id {params["ident_cutoff"]} --query-cover {params["cov_cutoff"]} --max-target-seqs {max_seqs} >> {log.name} 2>&1' , shell=True)
+                        
+    except Exception as e:
+        print('subprocess failure')
+        raise Exception(e)
 
     with open(tmp.name, "r") as file_handle:  #opens BLAST file
         align = file_handle.readlines()
@@ -68,32 +84,28 @@ def blast(acc, input_method, params, max_seqs):
     tmp.close()
     query.close()
 
+    f = open('./align-snowdock.json', "a")
+
+    f.write(json.dumps(align))
+
+    f.close()
+
     inDf = pd.DataFrame([ele.split() for ele in align],columns=flags.split())
+    inDf.to_json('./after-split-snowdock.json')
     inDf = inDf.apply(pd.to_numeric, errors='ignore')
+    inDf.to_json('./after-apply-snowdock.json')
 
     try:
         inDf['sseqid'] = inDf['sseqid'].str.split("|", n=2, expand=True)[1]
     except (ValueError, KeyError):
+        print('valueError or keyError')
         pass
 
     inDf.rename(columns= {'sseqid': 'Uniprot Id'}, inplace=True)
     inDf.rename(columns= {'pident': 'Identity'}, inplace=True)
     inDf.rename(columns= {'qcovhsp': 'Coverage'}, inplace=True)
 
-
-    
-
     return inDf
-
-
-
-
-
-
-
-
-
-
 
 if __name__ == "__main__":
 
