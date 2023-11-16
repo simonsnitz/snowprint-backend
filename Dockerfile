@@ -3,7 +3,11 @@ FROM python:3.10
 
 # Install build dependencies and tools
 RUN apt-get update && \
-    apt-get install diamond-aligner
+    apt-get install -y wget build-essential \
+    && wget https://github.com/bbuchfink/diamond/releases/download/v2.1.8/diamond-linux64.tar.gz \
+    && tar xzf diamond-linux64.tar.gz \
+    && mv diamond /usr/bin/ \
+    && rm diamond-linux64.tar.gz
 
 # Set the working directory
 WORKDIR /app
