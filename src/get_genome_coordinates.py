@@ -105,8 +105,6 @@ def get_genome_coordinates_batch(homolog_dict):
 
     embl_string = "".join(i+"," for i in embl_acc_list)[:-1]
 
-    print(f'embl_string: {embl_string}')
-
     response = requests.get('https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=protein&id='+embl_string+'&rettype=ipg')
     if response.ok:
         parsed = xmltodict.parse(response.text)
@@ -114,9 +112,6 @@ def get_genome_coordinates_batch(homolog_dict):
             proteins = parsed["IPGReportSet"]["IPGReport"]
         except Exception as e:
             raise Exception('IPGReportSet error get_genome_coordinates_batch')
-
-        print(proteins)
-        print(homolog_dict)
             
         if len(proteins) == len(homolog_dict):
 

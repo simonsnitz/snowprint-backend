@@ -32,19 +32,6 @@ def signal_handler(signal, frame):
 signal.signal(signal.SIGTERM, signal_handler)
 signal.signal(signal.SIGINT, signal_handler)
 
-# [ERROR] ResourceNotFoundException: An error occurred (ResourceNotFoundException) when calling the Scan operation: Requested resource not found
-# Traceback (most recent call last):
-#   File "/var/task/lambda_function.py", line 30, in lambda_handler
-#     scan_response = table.scan(
-#   File "/var/runtime/boto3/resources/factory.py", line 580, in do_action
-#     response = action(self, *args, **kwargs)
-#   File "/var/runtime/boto3/resources/action.py", line 88, in __call__
-#     response = getattr(parent.meta.client, operation_name)(*args, **params)
-#   File "/var/runtime/botocore/client.py", line 530, in _api_call
-#     return self._make_api_call(operation_name, kwargs)
-#   File "/var/runtime/botocore/client.py", line 960, in _make_api_call
-#     raise error_class(parsed_response, operation_name)
-
 def set_params(param_obj):
     try:
         blast_params = {
