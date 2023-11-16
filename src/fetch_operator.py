@@ -66,6 +66,9 @@ def findBestPalindrome(intergenic, shortest, longest, winScore, lossScore, sPena
             for j in ops:
                 operators.append(j)
 
+    if (len(operators) == 0):
+        return []
+
     #TODO: crashes if no operators are found
     max_score = max([i["score"] for i in operators])
     best_operators = [i for i in operators if i["score"] == max_score]
@@ -187,6 +190,9 @@ def get_consensus_score(operator, consensus_data, ext_length):
     consensus_score = 0
 
     #TODO: confirm that the consensus_data is not empty. Otherwise it might crash
+
+    if consensus_data is None:
+        return 0
 
     for i in range(0,len(operator)):
         if operator[i].isupper():

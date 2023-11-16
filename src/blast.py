@@ -23,7 +23,7 @@ def accID2sequence(accID: str):
         fasta = "".join(i for i in fasta if i[0] != ">")
         return fasta
     else:
-        print("FATAL: Bad eFetch request "+ str(response.status_code))
+        print("FATAL: Bad eFetch request for accID2seqeuence"+ str(response.status_code))
         return None
 
 
@@ -34,7 +34,7 @@ def uniprotID2sequence(ID: str):
         seq = json.loads(response.text)["sequence"]["value"]
         return seq
     else:
-        print("FATAL: Bad eFetch request "+ str(response.status_code))
+        print("FATAL: Bad eFetch request for uniprotID2sequence"+ str(response.status_code))
         return None
 
 
@@ -47,23 +47,38 @@ def blast(acc, input_method, params, max_seqs):
     else:
         seq = acc
 
+    if seq is None:
+        raise Exception('Bad efetch')
+
     flags = 'sseqid pident qcovhsp'
         # Must set this memory limit for running on a 1GB EC2 instance
-    memory_limit = 0.15
+    memory_limit = 0.1
   
     query = NamedTemporaryFile()
     tmp = NamedTemporaryFile()
     log = NamedTemporaryFile()
-    SeqIO.write(SeqRecord(Seq(seq), id="temp"), query.name, "fasta")
+    try:
+        SeqIO.write(SeqRecord(Seq(seq), id="temp"), query.name, "fasta")
+    except Exception as e:
+        print('SeqIO failure')
+        raise Exception(e)
 
-    # Select database to blast
-    diamond_db = "./databases/bHTH_RefSeq.dmnd"
-    
-    subprocess.call(f'./databases/diamond blastp -d {diamond_db} -q {query.name} -o {tmp.name} --outfmt 6 {flags} -b {memory_limit}'
-                    f' --id {params["ident_cutoff"]} --query-cover {params["cov_cutoff"]} --max-target-seqs {max_seqs} >> {log.name} 2>&1' , shell=True)
+    try:
+        # Select database to blast
+        diamond_db = "./databases/bHTH_RefSeq.dmnd"
+        
+        subprocess.call(f'./databases/diamond blastp -d {diamond_db} -q {query.name} -o {tmp.name} --outfmt 6 {flags} -b {memory_limit}'
+                        f' --id {params["ident_cutoff"]} --query-cover {params["cov_cutoff"]} --max-target-seqs {max_seqs} >> {log.name} 2>&1' , shell=True)
+    except Exception as e:
+        print('subprocess failure')
+        raise Exception(e)
 
-    with open(tmp.name, "r") as file_handle:  #opens BLAST file
-        align = file_handle.readlines()
+    try:
+        with open(tmp.name, "r") as file_handle:  #opens BLAST file
+            align = file_handle.readlines()
+    except Exception as e:
+        print('Read lines failure')
+        raise Exception(e)
 
     tmp.close()
     query.close()
@@ -79,9 +94,6 @@ def blast(acc, input_method, params, max_seqs):
     inDf.rename(columns= {'sseqid': 'Uniprot Id'}, inplace=True)
     inDf.rename(columns= {'pident': 'Identity'}, inplace=True)
     inDf.rename(columns= {'qcovhsp': 'Coverage'}, inplace=True)
-
-
-    
 
     return inDf
 

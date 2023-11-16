@@ -10,6 +10,7 @@ import pandas as pd
 import requests
 import json
 import sys
+import signal
 import ast
 import os
 import base64
@@ -19,31 +20,47 @@ import hashlib
 
 from decimal import Decimal
 
+# Graceful shutdown function
+# Shutdown is allowed to run until SIGKILL
+# The purpose is to capture SIGKILL reason inside Cloudwatch event to write to the database
+# Exiting early here would not result in the correct event sent
+def signal_handler(signal, frame):
+    print('Graceful shutdown activated')
+    print(f'Signal called: {signal}')
+
+# Map signals to handler
+signal.signal(signal.SIGTERM, signal_handler)
+signal.signal(signal.SIGINT, signal_handler)
+
 def set_params(param_obj):
-    blast_params = {
-        "ident_cutoff": param_obj["identity"],
-        "cov_cutoff": param_obj["coverage"]
-    }
+    try:
+        blast_params = {
+            "ident_cutoff": param_obj["identity"],
+            "cov_cutoff": param_obj["coverage"]
+        }
 
-    promoter_params = {
-        "min_length": param_obj["minLength"],
-        "max_length": param_obj["maxLength"]
-    }
+        promoter_params = {
+            "min_length": param_obj["minLength"],
+            "max_length": param_obj["maxLength"]
+        }
 
-    operator_params = {
-        "extension_length": param_obj["extension"],
-        "win_score": param_obj["alignMatch"],
-        "loss_score": param_obj["alignMismatch"],
-        "spacer_penalty": param_obj["penalty"],
-        "gap_open": param_obj["gapOpen"],
-        "gap_extend": param_obj["gapExtend"],
-        "align_match": param_obj["alignMatch"],
-        "align_mismatch": param_obj["alignMismatch"],
-        "min_operator_length": param_obj["minOperator"],
-        "max_operator_length": param_obj["maxOperator"],
-        "seq_to_align": param_obj["seqToAlign"],
-        "search_method": param_obj["conservation"]
-    }
+        operator_params = {
+            "extension_length": param_obj["extension"],
+            "win_score": param_obj["alignMatch"],
+            "loss_score": param_obj["alignMismatch"],
+            "spacer_penalty": param_obj["penalty"],
+            "gap_open": param_obj["gapOpen"],
+            "gap_extend": param_obj["gapExtend"],
+            "align_match": param_obj["alignMatch"],
+            "align_mismatch": param_obj["alignMismatch"],
+            "min_operator_length": param_obj["minOperator"],
+            "max_operator_length": param_obj["maxOperator"],
+            "seq_to_align": param_obj["seqToAlign"],
+            "search_method": param_obj["conservation"]
+        }
+    except Exception as e:
+        print(e)
+        raise Exception('Set params failed')
 
     return blast_params, promoter_params, operator_params
 
@@ -55,10 +72,13 @@ def perform_blast(blast_params, promoter_params, operator_params, data):
     acc = data["acc"]
     input_method = data["method"]
     max_homologs = data["homologs"]
-
-    blast_df = blast(acc, input_method, blast_params, max_seqs=500)
     homolog_dict = []
 
+    try:
+        blast_df = blast(acc, input_method, blast_params, max_seqs=500)
+    except Exception as e:
+        print(e)
+        raise Exception(e)
 
     if not blast_df.empty:
 
@@ -75,7 +95,11 @@ def perform_blast(blast_params, promoter_params, operator_params, data):
             return homolog_dict
 
         if filter_redundant:
-            homolog_dict = filter_blastDf(blast_df)
+            try:
+                homolog_dict = filter_blastDf(blast_df)
+            except Exception as e:
+                print('Error trying to filter blastDf')
+                raise Exception(e)
         else:
             homolog_dict = [
                 {"Uniprot Id": row["Uniprot Id"], "identity": row["Identity"],"coverage": row["Coverage"]}
@@ -91,11 +115,16 @@ def perform_blast(blast_params, promoter_params, operator_params, data):
     # (2) Get genome coordianates. Return a dataframe
 
     if genome_choice == "batch":
-        homolog_dict = get_genome_coordinates_batch(homolog_dict)
+        try:
+            homolog_dict = get_genome_coordinates_batch(homolog_dict)
+        except Exception as e:
+            print(e)
+            raise Exception(e)
 
         #TODO: I get an error here sometimes.
         if homolog_dict == None:
             print("Failed fetching genome coordinates. Try fetching these individually (advanced options)")
+            raise Exception("Failed fetching genome coordinates. Try fetching these individually (advanced options)")
         else:
             homolog_dict = [i for i in homolog_dict if i != None]
 
@@ -104,7 +133,12 @@ def perform_blast(blast_params, promoter_params, operator_params, data):
 
         updated_homolog_dict = []
         for i in range(0, len(homolog_dict)):
-            updated_homolog_dict.append(get_genome_coordinates(homolog_dict[i]))
+            try:
+                updated_homolog_dict.append(get_genome_coordinates(homolog_dict[i]))
+            except Exception as e:
+                print('Error on api embl call')
+                raise Exception(e)
+
 
         # Remove entries without any genome coordinates
         homolog_dict = [i for i in updated_homolog_dict if i != None]
@@ -190,14 +224,8 @@ def format_homologs(homolog_dict):
 
 # def write_results_to_db(table, extracted_dict, coordinates, aligned, consensus, num, passed_in_data, PASSED_UUID):
 def write_results_to_db(table, extracted_dict, return_data, passed_in_data, PASSED_UUID):
-
-    primary = passed_in_data["acc"]
     coordinates = return_data["coordinates_df"].to_dict('records')
     aligned_seqs = return_data["aligned_seqs"].to_dict('records')
-
-    # Construct a sha-256 hash for future reference if these advanced options have been done before
-    json_string = json.dumps(passed_in_data, sort_keys=True)
-    hashed = hashlib.sha256(json_string.encode()).hexdigest()
 
     Item={
         'PK': primary,
@@ -227,6 +255,33 @@ def write_results_to_db(table, extracted_dict, return_data, passed_in_data, PASS
     except Exception as e:
         print(e)
 
+# This function propagates error up throughout the whole application and writes it to the DB
+def central_error_handling(reason, passed_in_data):
+    print(f'Snowprint failure: {reason}')
+
+    Item={
+        'PK': primary,
+        'SK': PASSED_UUID,
+        'hash': hashed,
+        'status': 'error',
+        'reason': str(reason)
+        }
+
+    # Prepare DynamoDB
+    parsed_data = json.loads(json.dumps(Item))
+    dynamodb = boto3.resource('dynamodb', region_name='us-east-2')
+    table = dynamodb.Table(TABLE_NAME)
+
+    # Write data
+    try:
+        table.put_item(
+            Item=parsed_data
+        )
+    except Exception as e:
+        print(e)
+
+    exit()
+
 if __name__ == "__main__":
 
     # The following code may look strange but there is a method to the madness:
@@ -252,14 +307,29 @@ if __name__ == "__main__":
     TABLE_NAME = os.environ['TABLE_NAME']
     PASSED_UUID = os.environ['UUID']
 
+    global hashed
+    global primary
+
     # Decode base64 JSON
     decode_base64 = base64.b64decode(PASSED_IN_JSON)
     decode_bytes = decode_base64.decode('utf-8')
     data = json.loads(decode_bytes)
 
+    # Set globals
+    primary = data["acc"]
+    json_string = json.dumps(data, sort_keys=True)
+    hashed = hashlib.sha256(json_string.encode()).hexdigest()
+
     # Start snowprint
-    blast_params, promoter_params, operator_params = set_params(data)
-    return_data = perform_blast(blast_params, promoter_params, operator_params, data)
+    try:
+        blast_params, promoter_params, operator_params = set_params(data)
+    except Exception as e:
+        central_error_handling(e, data)
+    
+    try:
+        return_data = perform_blast(blast_params, promoter_params, operator_params, data)
+    except Exception as e:
+        central_error_handling(e, data)
 
     # Write results
     extracted_dict = format_homologs(return_data["homolog_dict"])

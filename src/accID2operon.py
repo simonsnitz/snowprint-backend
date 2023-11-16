@@ -187,12 +187,25 @@ def getOperon(allGenes, index, seq_start, strand):
 def acc2operon(homolog_dict):
 
     if "Genome" in homolog_dict.keys():
-        genes, index = getGenes(homolog_dict["Genome"], int(homolog_dict["Start"]), int(homolog_dict["Stop"]))
+        try:
+            genes, index = getGenes(homolog_dict["Genome"], int(homolog_dict["Start"]), int(homolog_dict["Stop"]))
+        except Exception as e:
+            print(e)
+            raise Exception(e)
 
         if index != None:
-            reg = fasta2MetaData(genes[index])
+            try:
+                reg = fasta2MetaData(genes[index])
+            except Exception as e:
+                print(e)
+                raise Exception(e)
 
-            operon, regIndex = getOperon(genes, index, reg['start'], reg['direction'])
+            try:
+                operon, regIndex = getOperon(genes, index, reg['start'], reg['direction'])
+            except Exception as e:
+                print(e)
+                raise Exception(e)
+                
             data = {"operon": operon, "protein_index": regIndex, "genome": homolog_dict["Genome"] }
             
             return data
@@ -200,11 +213,6 @@ def acc2operon(homolog_dict):
             return None
     else:
         return None
-
-
-if __name__ == "__main__":
-    
-    pprint(acc2operon("WP_187140699.1"))
 
 
 
