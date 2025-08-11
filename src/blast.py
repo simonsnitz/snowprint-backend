@@ -38,7 +38,7 @@ def uniprotID2sequence(ID: str):
         return None
 
 
-def blast(acc, input_method, params, max_seqs):
+def blast(acc, input_method, params, max_seqs, **kwargs):
 
     print(f'Blast params: {params}')
 
