@@ -49,7 +49,7 @@ def get_genome_coordinates_refseq(acc):
     else:
         print('WARNING: get_genome_coordinates eFetch request failed')
 
-def get_genome_coordinates(homolog_dict_item):
+def get_genome_coordinates(homolog_dict_item, **kwargs):
 
     embl = uniprot2EMBL(homolog_dict_item["Uniprot Id"])
 
@@ -86,7 +86,7 @@ def get_genome_coordinates(homolog_dict_item):
     except:
         return homolog_dict_item
 
-def get_genome_coordinates_batch(homolog_dict):
+def get_genome_coordinates_batch(homolog_dict, **kwargs):
 
     # sometimes there is "uniProtKBCrossReferences" key for a protein
     # this messes up the homolog_dict indexing, so to catch this case we need to 
